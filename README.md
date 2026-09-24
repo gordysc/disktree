@@ -28,8 +28,8 @@ cd disktree
 make install
 ```
 
-`make install` builds a release binary and puts three things under `~/.local`
-(no root needed):
+On Linux, `make install` builds a release binary and puts three things under
+`~/.local` (no root needed):
 
 - `~/.local/bin/disktree`
 - a desktop entry, so disktree is in the launcher and in a file manager's
@@ -40,8 +40,34 @@ make install
 `sudo make install PREFIX=/usr/local` installs system-wide; `make uninstall`
 removes exactly what was installed.
 
-You need Rust 1.97 or newer and a Wayland or X11 session with a GPU that GPUI
-can drive (Vulkan).
+You need Rust 1.97 or newer and, on Linux, a Wayland or X11 session with a GPU
+that GPUI can drive (Vulkan).
+
+### macOS
+
+Build on macOS 15 or newer with Rust 1.97+ and Xcode installed and selected
+with `xcode-select`. GPUI uses the native macOS window and Metal renderer;
+without an Omarchy theme, the interface uses Tokyo Night.
+
+```sh
+make install
+open ~/Applications/disktree.app
+```
+
+On macOS, `make install` installs the app with its icon in `~/Applications`
+and links `~/.local/bin/disktree` to the app's executable. Override
+`APPLICATIONS` to change the app location (`MAC_APPDIR` also works).
+`make app` creates just `target/disktree.app`; `make bundle` is an alias.
+`make run` runs the binary directly. These local app bundles are ad-hoc
+signed, not notarized for distribution. `make uninstall` removes the
+installed app and command line link.
+
+**Move to trash** uses the native macOS Trash, so files can be restored in
+Finder. macOS may ask for access to protected folders when scanning them.
+The Linux mount-table integration is unavailable on macOS: scans fall back
+to device boundaries, and `--disk` starts at `/`. APFS shared blocks and
+snapshots mean measured file sizes are not a guarantee of space reclaimed;
+the final free-space change is measured from the volume.
 
 ## Use
 
@@ -104,9 +130,9 @@ going in; `0` resets.
 `c` (or **Review…**) opens the list of everything marked. Unmark anything
 there, then choose:
 
-- **Move to trash** — the default when a trash is available (`trash-put` from
-  trash-cli, then `gio trash`, then a built-in XDG trash). Recoverable until
-  the trash is emptied, so it commits directly.
+- **Move to trash** — the default when a trash is available (native macOS
+  Trash; on Linux, `trash-put`, then `gio trash`, then built-in XDG trash).
+  Recoverable until the trash is emptied, so it commits directly.
 - **Delete permanently** — `rm -rf` semantics. It always asks first, in a dialog
   that names what goes and how much comes back.
 

@@ -16,6 +16,9 @@ the removal mode, the confirmation). Marking is never destructive.
 make build                      # release build
 make run                        # build and run, scanning $HOME
 make install                    # ~/.local: binary, desktop entry, icon
+                                # (macOS: ~/Applications/disktree.app)
+make app                        # macOS: build target/disktree.app
+make bundle                     # alias for make app
 make install PREFIX=/usr/local  # system-wide (needs root)
 make uninstall
 make lint                       # rustfmt --check, then clippy --all-targets -D warnings
@@ -24,10 +27,12 @@ make ci                         # lint, then test
 make fmt                        # format in place
 ```
 
-`make install` is the supported way to put this on a machine: it installs the
-release binary, `packaging/disktree.desktop.in` (rendered with the real install
-prefix and the crate version) and `assets/disktree.svg`. Keep the desktop
-entry's `Categories` to a single main category plus additional ones, or
+`make install` is the supported way to put this on a machine. On macOS it
+installs an ad-hoc signed app with an icon in `~/Applications` and a command
+line symlink in `~/.local/bin`; see README.md for overrides. On Linux it
+installs the release binary, `packaging/disktree.desktop.in` (rendered with
+the real install prefix and crate version) and `assets/disktree.svg`. Keep
+the desktop entry's `Categories` to a single main category plus additional ones, or
 `desktop-file-validate` complains.
 
 `cargo xtask lint` is the gate. It must be green before anything is called
