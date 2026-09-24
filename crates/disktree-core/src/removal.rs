@@ -250,6 +250,9 @@ pub fn normalize(path: &Path) -> PathBuf {
 /// Which tool, if any, moves files to the desktop trash.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TrashBackend {
+    /// The native macOS trash tool, available since macOS 15.
+    #[cfg(target_os = "macos")]
+    MacOs,
     /// `trash-put` from trash-cli.
     TrashPut,
     /// `gio trash`, present anywhere `GLib` is installed.
@@ -264,6 +267,8 @@ pub enum TrashBackend {
 impl TrashBackend {
     pub const fn is_available(self) -> bool {
         match self {
+            #[cfg(target_os = "macos")]
+            Self::MacOs => true,
             Self::TrashPut | Self::Gio | Self::XdgHome => true,
             Self::Unavailable => false,
         }
@@ -271,6 +276,8 @@ impl TrashBackend {
 
     pub const fn label(self) -> &'static str {
         match self {
+            #[cfg(target_os = "macos")]
+            Self::MacOs => "macOS Trash",
             Self::TrashPut => "trash-put",
             Self::Gio => "gio trash",
             Self::XdgHome => "XDG trash",
@@ -280,6 +287,8 @@ impl TrashBackend {
 
     pub const fn detail(self) -> &'static str {
         match self {
+            #[cfg(target_os = "macos")]
+            Self::MacOs => "moves to the same Trash as Finder",
             Self::TrashPut => {
                 "uses trash-cli, the same trash as your file manager"
             }
@@ -296,6 +305,21 @@ impl TrashBackend {
 
 /// Detect the best available trash backend for this machine.
 pub fn detect_trash_backend() -> TrashBackend {
+    // XDG trash is invisible to Finder; never offer it as the Mac default.
+    #[cfg(target_os = "macos")]
+    {
+        if Path::new("/usr/bin/trash").is_file() {
+            TrashBackend::MacOs
+        } else {
+            TrashBackend::Unavailable
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    detect_xdg_backend()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn detect_xdg_backend() -> TrashBackend {
     if which("trash-put") {
         TrashBackend::TrashPut
     } else if which("gio") {
@@ -307,6 +331,7 @@ pub fn detect_trash_backend() -> TrashBackend {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn which(program: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
@@ -453,6 +478,23 @@ pub fn remove_permanently(path: &Path) -> io::Result<()> {
 /// Move one path to the desktop trash.
 pub fn move_to_trash(path: &Path, backend: TrashBackend) -> io::Result<()> {
     match backend {
+        #[cfg(target_os = "macos")]
+        TrashBackend::MacOs => {
+            // Apple's tool treats `--` as a filename. Absolute paths cannot
+            // be parsed as flags, and -s makes a failed move exit nonzero.
+            let path = std::path::absolute(path)?;
+            let output = Command::new("/usr/bin/trash")
+                .arg("-s")
+                .arg(path)
+                .output()?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(io::Error::other(
+                    String::from_utf8_lossy(&output.stderr).into_owned(),
+                ))
+            }
+        }
         TrashBackend::TrashPut => run_tool(Path::new("trash-put"), &[], path),
         TrashBackend::Gio => run_tool(Path::new("gio"), &["trash"], path),
         TrashBackend::XdgHome => trash_via_xdg(path),
@@ -873,12 +915,37 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn detection_prefers_a_tool_this_machine_has() {
         let backend = detect_trash_backend();
         if which("trash-put") {
             assert_eq!(backend, TrashBackend::TrashPut);
         }
         assert!(backend.is_available());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn detection_uses_finders_trash_on_macos() {
+        let expected = if Path::new("/usr/bin/trash").is_file() {
+            TrashBackend::MacOs
+        } else {
+            TrashBackend::Unavailable
+        };
+        assert_eq!(detect_trash_backend(), expected);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_trash_reports_a_missing_path() {
+        if detect_trash_backend() != TrashBackend::MacOs {
+            return;
+        }
+        let temp = TempDir::new().expect("tempdir");
+        assert!(
+            move_to_trash(&temp.path().join("missing"), TrashBackend::MacOs)
+                .is_err()
+        );
     }
 
     #[test]
